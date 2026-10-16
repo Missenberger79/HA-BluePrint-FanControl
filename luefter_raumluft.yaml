@@ -1,0 +1,547 @@
+blueprint:
+  name: Lüftersteuerung nach Raumluft (CO2, VOC, Feuchte, Temperatur)
+  description: |
+    Regelt einen Lüfter auf eine feste Prozentstufe, sobald ein Messwert
+    (CO2, VOC, Luftfeuchte oder Temperatur) seinen Grenzwert für X Minuten
+    über- oder unterschreitet. Der Lüfter läuft, bis ALLE konfigurierten
+    Werte wieder um X % Abstand zum Grenzwert im grünen Bereich sind.
+    Danach geht er nach X Minuten auf eine frei wählbare Grundstufe
+    (0 % = aus).
+
+    Nachtsperre: Solange "Nacht" ist, macht die Automation gar nichts.
+    Nacht kann über ein Zeitfenster, Sonnenstand mit Offset und/oder einen
+    Schalter definiert werden. Sobald mehrere aktiv sind, reicht es, wenn
+    eine davon "Nacht" meldet. Ausnahme: Beim Nachtende hat die Endzeit
+    des Zeitfensters Vorrang vor dem Sonnenaufgang. Nach Nachtende startet der Lüfter, falls
+    ein Grenzwert dann verletzt ist.
+
+    Alle vier Sensoren sind optional. Leer lassen, was du nicht brauchst.
+    Der Lüfter muss eine fan-Entität sein, die Prozentstufen kann.
+  domain: automation
+  source_url: https://github.com/Missenberger79/HA-BluePrint-FanControl/blob/main/luefter_raumluft.yaml
+  author: Thorsten
+  min_version: 2024.10.0
+  input:
+    fan_section:
+      name: Lüfter
+      icon: mdi:fan
+      collapsed: false
+      input:
+        fan_entity:
+          name: Lüfter
+          description: Die zu steuernde Lüfter-Entität.
+          selector:
+            entity:
+              domain: fan
+        fan_speed:
+          name: Lüfterstufe bei Auslösung
+          description: Auf wie viel Prozent der Lüfter geregelt wird.
+          default: 60
+          selector:
+            number:
+              min: 1
+              max: 100
+              step: 1
+              unit_of_measurement: "%"
+              mode: slider
+    co2_section:
+      name: CO2
+      icon: mdi:molecule-co2
+      collapsed: true
+      input:
+        co2_sensor:
+          name: CO2-Sensor
+          default: ""
+          selector:
+            entity:
+              domain: sensor
+              device_class: carbon_dioxide
+        co2_limit:
+          name: Grenzwert CO2
+          default: 1000
+          selector:
+            number:
+              min: 300
+              max: 5000
+              step: 10
+              unit_of_measurement: ppm
+              mode: box
+        co2_direction:
+          name: Auslösen bei
+          default: above
+          selector:
+            select:
+              options:
+                - label: Über dem Grenzwert
+                  value: above
+                - label: Unter dem Grenzwert
+                  value: below
+    voc_section:
+      name: VOC
+      icon: mdi:air-filter
+      collapsed: true
+      input:
+        voc_sensor:
+          name: VOC-Sensor
+          description: Einheit je nach Sensor (ppb, ppm, µg/m³ oder Index). Grenzwert passend dazu setzen.
+          default: ""
+          selector:
+            entity:
+              domain: sensor
+        voc_limit:
+          name: Grenzwert VOC
+          default: 500
+          selector:
+            number:
+              min: 0
+              max: 100000
+              step: 1
+              mode: box
+        voc_direction:
+          name: Auslösen bei
+          default: above
+          selector:
+            select:
+              options:
+                - label: Über dem Grenzwert
+                  value: above
+                - label: Unter dem Grenzwert
+                  value: below
+    humidity_section:
+      name: Luftfeuchte
+      icon: mdi:water-percent
+      collapsed: true
+      input:
+        humidity_sensor:
+          name: Feuchtesensor
+          default: ""
+          selector:
+            entity:
+              domain: sensor
+              device_class: humidity
+        humidity_limit:
+          name: Grenzwert Luftfeuchte
+          default: 65
+          selector:
+            number:
+              min: 0
+              max: 100
+              step: 1
+              unit_of_measurement: "%"
+              mode: box
+        humidity_direction:
+          name: Auslösen bei
+          default: above
+          selector:
+            select:
+              options:
+                - label: Über dem Grenzwert
+                  value: above
+                - label: Unter dem Grenzwert
+                  value: below
+    temp_section:
+      name: Temperatur
+      icon: mdi:thermometer
+      collapsed: true
+      input:
+        temp_sensor:
+          name: Temperatursensor
+          default: ""
+          selector:
+            entity:
+              domain: sensor
+              device_class: temperature
+        temp_limit:
+          name: Grenzwert Temperatur
+          default: 26
+          selector:
+            number:
+              min: -30
+              max: 60
+              step: 0.5
+              unit_of_measurement: °C
+              mode: box
+        temp_direction:
+          name: Auslösen bei
+          default: above
+          selector:
+            select:
+              options:
+                - label: Über dem Grenzwert
+                  value: above
+                - label: Unter dem Grenzwert
+                  value: below
+    timing_section:
+      name: Zeiten und Rückkehr
+      icon: mdi:timer-outline
+      collapsed: false
+      input:
+        trigger_delay:
+          name: Verzögerung bis zum Einschalten
+          description: So lange muss ein Grenzwert verletzt sein, bevor der Lüfter startet.
+          default: 2
+          selector:
+            number:
+              min: 0
+              max: 120
+              step: 1
+              unit_of_measurement: min
+              mode: box
+        hysteresis:
+          name: Abstand zum Grenzwert zum Beenden
+          description: >
+            Der Lüfter läuft, bis der Wert um diesen Prozentsatz im
+            grünen Bereich liegt. Beispiel: Grenzwert 1000 ppm und 10 %
+            heißt, der Lüfter geht erst unter 900 ppm zurück.
+          default: 10
+          selector:
+            number:
+              min: 0
+              max: 50
+              step: 1
+              unit_of_measurement: "%"
+              mode: slider
+        restore_delay:
+          name: Wartezeit vor der Rückkehr
+          description: >
+            So lange müssen alle Werte im grünen Bereich bleiben, bevor
+            der Lüfter auf die Grundstufe zurückgeht. 0 = sofort.
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 240
+              step: 1
+              unit_of_measurement: min
+              mode: box
+        base_speed:
+          name: Grundstufe im grünen Bereich
+          description: >
+            Auf diese Stufe geht der Lüfter zurück, wenn alles wieder okay
+            ist. 0 = Lüfter ausschalten. Es wird nur heruntergeregelt,
+            nie hochgeschaltet.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 100
+              step: 1
+              unit_of_measurement: "%"
+              mode: slider
+    night_section:
+      name: Nachtsperre
+      icon: mdi:weather-night
+      collapsed: true
+      input:
+        night_time_enabled:
+          name: Zeitfenster verwenden
+          default: false
+          selector:
+            boolean:
+        night_start:
+          name: Zeitfenster von
+          default: "22:00:00"
+          selector:
+            time:
+        night_end:
+          name: Zeitfenster bis
+          default: "06:30:00"
+          selector:
+            time:
+        night_astro_enabled:
+          name: Sonnenstand verwenden
+          description: >
+            Nacht beginnt mit dem Sonnenuntergang (plus Offset). Das Ende
+            richtet sich nach dem Sonnenaufgang (plus Offset), aber nur,
+            wenn das Zeitfenster NICHT aktiv ist. Ist das Zeitfenster
+            aktiv, bestimmt allein dessen Endzeit, wann die Nacht vorbei
+            ist, egal ob die Sonne schon oben ist oder nicht.
+          default: false
+          selector:
+            boolean:
+        astro_start_offset:
+          name: Offset zum Sonnenuntergang
+          description: Minuten. Negativ = früher, positiv = später als der Sonnenuntergang.
+          default: 0
+          selector:
+            number:
+              min: -240
+              max: 240
+              step: 1
+              unit_of_measurement: min
+              mode: box
+        astro_end_offset:
+          name: Offset zum Sonnenaufgang
+          description: Minuten. Negativ = früher, positiv = später als der Sonnenaufgang.
+          default: 0
+          selector:
+            number:
+              min: -240
+              max: 240
+              step: 1
+              unit_of_measurement: min
+              mode: box
+        night_switch:
+          name: Schalter für Nachtmodus
+          description: >
+            Optional. Ist einer der gewählten Schalter an, gilt "Nacht".
+            Funktioniert mit Schalter, Helfer (input_boolean) und
+            Binärsensor.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              domain:
+                - input_boolean
+                - switch
+                - binary_sensor
+
+mode: restart
+max_exceeded: silent
+
+trigger_variables:
+  co2_entity: !input co2_sensor
+  co2_lim: !input co2_limit
+  co2_dir: !input co2_direction
+  voc_entity: !input voc_sensor
+  voc_lim: !input voc_limit
+  voc_dir: !input voc_direction
+  hum_entity: !input humidity_sensor
+  hum_lim: !input humidity_limit
+  hum_dir: !input humidity_direction
+  temp_entity: !input temp_sensor
+  temp_lim: !input temp_limit
+  temp_dir: !input temp_direction
+  hyst: !input hysteresis
+
+variables:
+  fan_entity: !input fan_entity
+  fan_speed: !input fan_speed
+  base_speed: !input base_speed
+  night_time_enabled: !input night_time_enabled
+  night_astro_enabled: !input night_astro_enabled
+  night_switch: !input night_switch
+  co2_entity: !input co2_sensor
+  co2_lim: !input co2_limit
+  co2_dir: !input co2_direction
+  voc_entity: !input voc_sensor
+  voc_lim: !input voc_limit
+  voc_dir: !input voc_direction
+  hum_entity: !input humidity_sensor
+  hum_lim: !input humidity_limit
+  hum_dir: !input humidity_direction
+  temp_entity: !input temp_sensor
+  temp_lim: !input temp_limit
+  temp_dir: !input temp_direction
+  hyst: !input hysteresis
+  belastet_now: |
+    {% set ns = namespace(hit=false) %}
+    {% for e, lim, d in [
+      (co2_entity, co2_lim, co2_dir),
+      (voc_entity, voc_lim, voc_dir),
+      (hum_entity, hum_lim, hum_dir),
+      (temp_entity, temp_lim, temp_dir)
+    ] %}
+      {% if e and is_number(states(e)) %}
+        {% set v = states(e) | float %}
+        {% if (d == 'above' and v > lim | float) or (d == 'below' and v < lim | float) %}
+          {% set ns.hit = true %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.hit }}
+  entspannt_now: |
+    {% set ns = namespace(active=false, seen=false) %}
+    {% for e, lim, d in [
+      (co2_entity, co2_lim, co2_dir),
+      (voc_entity, voc_lim, voc_dir),
+      (hum_entity, hum_lim, hum_dir),
+      (temp_entity, temp_lim, temp_dir)
+    ] %}
+      {% if e %}
+        {% if is_number(states(e)) %}
+          {% set v = states(e) | float %}
+          {% set l = lim | float %}
+          {% set gap = (l | abs) * (hyst | float) / 100 %}
+          {% set ns.seen = true %}
+          {% if (d == 'above' and v >= l - gap) or (d == 'below' and v <= l + gap) %}
+            {% set ns.active = true %}
+          {% endif %}
+        {% else %}
+          {% set ns.active = true %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.seen and not ns.active }}
+
+triggers:
+  # Mindestens ein Wert ist seit X Minuten außerhalb des Grenzwerts
+  - trigger: template
+    id: belastet
+    value_template: |
+      {% set ns = namespace(hit=false) %}
+      {% for e, lim, d in [
+        (co2_entity, co2_lim, co2_dir),
+        (voc_entity, voc_lim, voc_dir),
+        (hum_entity, hum_lim, hum_dir),
+        (temp_entity, temp_lim, temp_dir)
+      ] %}
+        {% if e and is_number(states(e)) %}
+          {% set v = states(e) | float %}
+          {% if (d == 'above' and v > lim | float) or (d == 'below' and v < lim | float) %}
+            {% set ns.hit = true %}
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+      {{ ns.hit }}
+    for:
+      minutes: !input trigger_delay
+
+  # Alle Werte sind mit Abstand (Hysterese) wieder im grünen Bereich
+  - trigger: template
+    id: entspannt
+    value_template: |
+      {% set ns = namespace(active=false, seen=false) %}
+      {% for e, lim, d in [
+        (co2_entity, co2_lim, co2_dir),
+        (voc_entity, voc_lim, voc_dir),
+        (hum_entity, hum_lim, hum_dir),
+        (temp_entity, temp_lim, temp_dir)
+      ] %}
+        {% if e %}
+          {% if is_number(states(e)) %}
+            {% set v = states(e) | float %}
+            {% set l = lim | float %}
+            {% set gap = (l | abs) * (hyst | float) / 100 %}
+            {% set ns.seen = true %}
+            {% if (d == 'above' and v >= l - gap) or (d == 'below' and v <= l + gap) %}
+              {% set ns.active = true %}
+            {% endif %}
+          {% else %}
+            {# Sensor nicht verfügbar: Lüfter lieber weiterlaufen lassen #}
+            {% set ns.active = true %}
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+      {{ ns.seen and not ns.active }}
+    for:
+      minutes: !input restore_delay
+
+  # Nachtende: Zeitfenster
+  - trigger: time
+    id: nacht_aus
+    at: !input night_end
+    enabled: !input night_time_enabled
+
+  # Nachtende: Sonnenaufgang mit Offset
+  - trigger: sun
+    id: nacht_aus
+    event: sunrise
+    offset:
+      minutes: !input astro_end_offset
+    enabled: !input night_astro_enabled
+
+  # Nachtende: Schalter geht aus
+  - trigger: state
+    id: nacht_aus
+    entity_id: !input night_switch
+    to: "off"
+
+actions:
+  # Solange irgendeine Nachtquelle "Nacht" meldet, passiert nichts
+  - condition: not
+    conditions:
+      - condition: or
+        conditions:
+          - condition: and
+            conditions:
+              - condition: template
+                value_template: "{{ night_time_enabled | bool(false) }}"
+              - condition: time
+                after: !input night_start
+                before: !input night_end
+          # Astro am Abend: Nacht beginnt nach Sonnenuntergang (plus Offset)
+          - condition: and
+            conditions:
+              - condition: template
+                value_template: "{{ night_astro_enabled | bool(false) }}"
+              - condition: sun
+                after: sunset
+                after_offset:
+                  minutes: !input astro_start_offset
+          # Astro am Morgen: nur wenn KEIN Zeitfenster aktiv ist.
+          # Mit Zeitfenster entscheidet allein dessen Endzeit über das Nachtende.
+          - condition: and
+            conditions:
+              - condition: template
+                value_template: "{{ night_astro_enabled | bool(false) and not night_time_enabled | bool(false) }}"
+              - condition: sun
+                before: sunrise
+                before_offset:
+                  minutes: !input astro_end_offset
+          - condition: template
+            value_template: >
+              {{ night_switch | default([], true) | select('is_state', 'on') | list | count > 0 }}
+
+  - choose:
+      # Grenzwert verletzt: Lüfter auf Stufe
+      - conditions:
+          - condition: trigger
+            id: belastet
+        sequence:
+          - action: fan.turn_on
+            target:
+              entity_id: !input fan_entity
+            data:
+              percentage: "{{ fan_speed | int(0) }}"
+
+      # Alles wieder gut: auf Grundstufe zurück (auch nach Nachtende nachgeholt)
+      - conditions:
+          - condition: or
+            conditions:
+              - condition: trigger
+                id: entspannt
+              - condition: and
+                conditions:
+                  - condition: trigger
+                    id: nacht_aus
+                  - condition: template
+                    value_template: "{{ entspannt_now | bool(false) }}"
+        sequence:
+          - variables:
+              target_speed: "{{ base_speed | int(0) }}"
+              current_speed: "{{ state_attr(fan_entity, 'percentage') | int(0) }}"
+          - if:
+              - condition: template
+                value_template: >
+                  {{ is_state(fan_entity, 'on')
+                     and (target_speed | int(0) == 0
+                          or current_speed | int(0) > target_speed | int(0)) }}
+            then:
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ target_speed | int(0) == 0 }}"
+                    sequence:
+                      - action: fan.turn_off
+                        target:
+                          entity_id: !input fan_entity
+                default:
+                  - action: fan.set_percentage
+                    target:
+                      entity_id: !input fan_entity
+                    data:
+                      percentage: "{{ target_speed | int(0) }}"
+
+      # Nachtende: falls ein Grenzwert noch verletzt ist, Lüfter starten
+      - conditions:
+          - condition: trigger
+            id: nacht_aus
+          - condition: template
+            value_template: "{{ belastet_now | bool(false) }}"
+        sequence:
+          - action: fan.turn_on
+            target:
+              entity_id: !input fan_entity
+            data:
+              percentage: "{{ fan_speed | int(0) }}"
